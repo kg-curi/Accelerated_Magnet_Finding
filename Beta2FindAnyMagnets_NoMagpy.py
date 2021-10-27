@@ -13,16 +13,16 @@ import time
 #         xyarray.append([x, y])
 #         print(xyarray)
 
-@jit(nopython=True)
-def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
-    # mu0 = 4 * np.pi * 10**-7
+# Simulate fields using a magnetic dipole model
+@jit(nopython=True) # Use numba to compile this method for large speed increase
+def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
     triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
 
     manta = triad + arrays[0] // 6 * np.asarray([0, -19.5, 0]) + (arrays[0] % 6) * np.asarray([19.5, 0, 0])
 
-    for array in range(1, len(arrays)):
+    for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
         manta = np.append(manta, (triad + arrays[array] // 6 * np.asarray([0, -19.5, 0]) + (arrays[array] % 6) * np.asarray([19.5, 0, 0])), axis=0)
 
     fields = np.zeros((len(manta), 3))
@@ -36,12 +36,13 @@ def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
         r = -np.asarray([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # radii to moment
         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
 
+        # simulate fields at sensors using dipole model for each magnet
         for field in range(0, len(r)):
             fields[field] += 3 * r[field] * np.dot(m, r[field]) / rAbs[field] ** 5 - m / rAbs[field] ** 3
 
-    return fields.reshape((1, 3*len(r)))[0] * 0.07957747
+    return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi
 
-
+# Cost function
 def objective_function_ls(pos, Bmeas, arrays):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -57,7 +58,7 @@ def objective_function_ls(pos, Bmeas, arrays):
     return Bcalc - Bmeas
 
 
-# %%
+# Process data from instrument
 def processData(dataName):
     fileName = f'{dataName}.txt'
     numWells = 24
@@ -110,6 +111,7 @@ def processData(dataName):
 
     return fullData
 
+# Generate initial guess data and run least squares optimizer on instrument data to get magnet positions
 def getPositions(data):
     numSensors = 3
     numAxes = 3
@@ -158,20 +160,6 @@ def getPositions(data):
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
                             method='trf', ftol=1e-2)
 
-                            #         , bounds = ([-np.inf, -np.inf, -np.inf,
-                    #  -np.inf, -np.inf, -np.inf,
-                    #  -np.inf, -np.inf, -np.inf,
-                    #  -np.inf, -np.inf, -np.inf,
-                    #  -10, -10, -10,
-                    #  -1400, -1400, -1400],
-                    # [np.inf, np.inf, np.inf,
-                    #  np.inf, np.inf, np.inf,
-                    #  np.inf, np.inf, np.inf,
-                    #  np.inf, np.inf, np.inf,
-                    #  10, 10, 10,
-                    #  1400, 1400, 1400]))
-
-
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
         xpos_est.append(outputs[0])
@@ -192,26 +180,18 @@ def getPositions(data):
            np.asarray(phi_est),
            np.asarray(remn_est)]
 
-
-# plt.plot(processData("Dynamic Capture - One Magnet - Deflected - Heat Treated - Magnetic Recording 1")[5, 2, 1, 0:2500])
-# plt.xlabel("dp no.")
-# plt.ylabel("y Field (mT)")
-# plt.show()
-
 outputs = []
 
 if  input("Regenerate Fields?"):
 
     pickle_in = open("Last_Data.pickle", "rb")
     outputs = pickle.load(pickle_in)
-    high_cut = 1 # Hz
-    b, a = signal.butter(4, high_cut, 'low', fs=100)
-    outputs = signal.filtfilt(b, a, outputs, axis=1)
+
 
 else:
 
-    mtFields = processData("Beta_2_Raw_Data\\Tissues1_Tissues_2345")[:, :, :, 0:2000] \
-                - processData("Beta_2_Raw_Data\\Tissues1_Baseline_2345")[:, :, :, 0:2000] #80s for 2345
+    mtFields = processData("Beta_2_Raw_Data\\2021-10-15_18-57-49_data")[:, :, :, 0:2000] \
+                - processData("Beta_2_Raw_Data\\2021-10-15_18-54-01_data_baseline")[:, :, :, 0:2000] #80s for 2345
 
     outputs = np.asarray(getPositions(mtFields))
 
@@ -219,26 +199,33 @@ else:
     pickle.dump(outputs, pickle_out)
     pickle_out.close()
 
+
+# high_cut = 1 # Hz
+# b, a = signal.butter(4, high_cut, 'low', fs=100)
+# outputs = signal.filtfilt(b, a, outputs, axis=1)
+
+#Plot data
 nameMagnet = []
 for i in range(0, outputs.shape[2]):
     nameMagnet.append("magnet {0}".format(i))
 
-plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[0, :, 0:16])
-# plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[0, :, 8] - 21)
-
+# x wrt t
+plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[0, :, :])
 plt.ylabel("predicted x position (mm)")
 plt.xlabel("time elapsed (s)")
 plt.grid(True)
 # plt.legend(nameMagnet)
 plt.show()
 
-plt.plot(outputs[1])
+# y wrt t
+plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[1])
 plt.ylabel("ypos")
 plt.xlabel("datapoint number")
 # plt.legend(nameMagnet)
 plt.show()
 
-plt.plot(outputs[0, :, 5], outputs[2, :, 5], 'x')
+#y wrt x
+plt.plot(outputs[0], outputs[1], 'x')
 plt.xlabel("predicted x position (mm)")
 plt.ylabel("predicted y position (mm)")
 # plt.legend(nameMagnet)
@@ -247,10 +234,12 @@ plt.xlim(150, 10)
 plt.ylim(-70, 10)
 plt.show()
 
+# print outputs
 for i in range(0, len(outputs)):
      print(outputs[i, 0])
 
-# # Modify images to show predicted coords
+
+# # Modify images to superimpose predicted coords for tracking visualization
 #
 # vidcap = cv2.VideoCapture('Dynamic Capture - Round 2 Video.avi')
 # total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
