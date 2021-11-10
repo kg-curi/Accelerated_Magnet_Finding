@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
 import pickle
 import scipy.signal as signal
-from numba import jit
+from numba import njit, jit, prange
 import time
 
 
@@ -15,7 +15,8 @@ import time
 
 
 # Simulate fields using a magnetic dipole model
-@jit(nopython=True) # Use numba to compile this method for large speed increase
+# @njit(parallel=True) # Use numba to compile this method for large speed increase
+@jit(nopython=True)
 def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
     triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
@@ -132,7 +133,7 @@ def getPositions(data):
             arrays.append(array)
     print(arrays)
 
-    guess = [2, -5, 95, 1, 0, -575] #x, z, theta, y, phi remn
+    guess = [0, -5, 95, 1, 0, -575] #x, z, theta, y, phi remn
     x0 = []
     for i in range(0, 6):
         for j in arrays:
@@ -146,7 +147,7 @@ def getPositions(data):
 
     res = []
     start = time.time()
-    for i in range(0, 2000):  # 150
+    for i in range(0, 500):  # 150
         if len(res) > 0:
             x0 = np.asarray(res.x)
 
@@ -172,7 +173,7 @@ def getPositions(data):
         print(i)
 
     end = time.time()
-    print("total processing time for 20s of 16 well data= {0} s".format(end - start))
+    print("total processing time for 20s of 24 well data= {0} s".format(end - start))
     return [np.asarray(xpos_est),
            np.asarray(ypos_est),
            np.asarray(zpos_est),
@@ -181,18 +182,30 @@ def getPositions(data):
            np.asarray(remn_est)]
 
 outputs = []
+outputs2 = []
 
 if  input("Regenerate Fields?"):
 
     pickle_in = open("Last_Data.pickle", "rb")
     outputs = pickle.load(pickle_in)
+    pickle_in = open("Last_Data_mean.pickle", "rb")
+    outputs2 = pickle.load(pickle_in)
+
+
 
 
 else:
 
-    mtFields = processData("Beta_2_Raw_Data\\2021-10-15_18-57-49_data")[:, :, :, 0:2000] \
-                - processData("Beta_2_Raw_Data\\2021-10-15_18-54-01_data_baseline")[:, :, :, 0:2000] #80s for 2345
+    mtFields = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000] - np.tile(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:1502], 250)
 
+    mtFields2 = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000]
+    meanOffset = np.mean(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:2000], axis=3)
+
+
+    for i in range (0, len(mtFields2)):
+        mtFields2[:, :, :, i] = mtFields2[:, :, :, i] - meanOffset
+
+    print("Processed")
     outputs = np.asarray(getPositions(mtFields))
 
     pickle_out = open("Last_Data.pickle", "wb")
@@ -200,9 +213,17 @@ else:
     pickle_out.close()
 
 
-# high_cut = 1 # Hz
-# b, a = signal.butter(4, high_cut, 'low', fs=100)
-# outputs = signal.filtfilt(b, a, outputs, axis=1)
+high_cut = 30 # Hz
+b, a = signal.butter(4, high_cut, 'low', fs=100)
+outputs = signal.filtfilt(b, a, outputs, axis=1)
+outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
+
+peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
+print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
+
+print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
+
+print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 
 #Plot data
 nameMagnet = []
@@ -210,10 +231,16 @@ for i in range(0, outputs.shape[2]):
     nameMagnet.append("magnet {0}".format(i))
 
 # x wrt t
-plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[0, :, :])
-plt.ylabel("predicted x position (mm)")
+print(outputs.shape)
+# plt.plot(np.arange(0, len(outputs[0, 0:1600, 22]) / 100, .01), outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))
+# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
+# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
+plt.plot(outputs[0, 0:500, 3])
+plt.plot(outputs2[0, 0:500, 3])
+plt.ylabel("predicted x displacement (mm)")
 plt.xlabel("time elapsed (s)")
 plt.grid(True)
+plt.legend(["Element-Wise Subtraction", "Averaged offset subtraction"])
 # plt.legend(nameMagnet)
 plt.show()
 
@@ -230,7 +257,7 @@ plt.xlabel("predicted x position (mm)")
 plt.ylabel("predicted y position (mm)")
 # plt.legend(nameMagnet)
 plt.gca().set_aspect('equal', adjustable='box')
-plt.xlim(150, 10)
+plt.xlim(150, -10)
 plt.ylim(-70, 10)
 plt.show()
 
