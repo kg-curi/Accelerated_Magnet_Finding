@@ -1,40 +1,32 @@
 # %% Import Libraries
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
-import pickle
-import scipy.signal as signal
-from numba import njit, jit, prange
-import time
-
-
-# def markPoint(event, x, y, flags, xyarray):
-#     if event == cv2.EVENT_LBUTTONDBLCLK:
-#         xyarray.append([x, y])
-#         print(xyarray)
-
+from numba import jit
 
 # Simulate fields using a magnetic dipole model
-# @njit(parallel=True) # Use numba to compile this method for large speed increase
+# Use numba to compile this method for large speed increase
+# takes lists of magnet info
+# takes list showing which sensor arrays are active
+# gets
 @jit(nopython=True)
 def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
-    triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
+    triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations relative to origin
 
     manta = triad + arrays[0] // 6 * np.asarray([0, -19.5, 0]) + (arrays[0] % 6) * np.asarray([19.5, 0, 0])
 
-    for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
+    for array in range(1, len(arrays)): #Compute sensor positions unde each well-- probably not necessary to do each call
         manta = np.append(manta, (triad + arrays[array] // 6 * np.asarray([0, -19.5, 0]) + (arrays[array] % 6) * np.asarray([19.5, 0, 0])), axis=0)
 
     fields = np.zeros((len(manta), 3))
-    theta = theta / 360 * 2 * np.pi
-    phi = phi / 360 * 2 * np.pi
+    theta = theta / 360 * 2 * np.pi # magnet pitch
+    phi = phi / 360 * 2 * np.pi # magnet yaw
 
     for magnet in range(0, len(arrays)):
         m = np.pi * (.75 / 2.0) ** 2 * remn[magnet] * np.asarray([np.sin(theta[magnet]) * np.cos(phi[magnet]),
                                                                   np.sin(theta[magnet]) * np.sin(phi[magnet]),
-                                                                  np.cos(theta[magnet])])  # moment vectors
-        r = -np.asarray([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # radii to moment
+                                                                  np.cos(theta[magnet])])  # compute moment vectors based on magnet strength and orientation
+        r = -np.asarray([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # compute distance vector from origin to moment
         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
 
         # simulate fields at sensors using dipole model for each magnet
@@ -43,16 +35,16 @@ def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
     return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi
 
-# Cost function
+# Cost function to be minimized by the least squares
 def objective_function_ls(pos, Bmeas, arrays):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
     x = pos[0]
     z = pos[1]
-    theta = pos[2]
+    theta = pos[2] # angle about y
     y = pos[3]
-    phi = pos[4]
-    remn = pos[5]
+    phi = pos[4] # angle about z
+    remn = pos[5] #remanence
 
     Bcalc = np.asarray(meas_field(x, z, theta, y, phi, remn, arrays))
 
@@ -112,6 +104,8 @@ def processData(dataName):
 
     return fullData
 
+# Takes an array indexed as [well, sensor, axis, timepoint]
+# Assumes 3 active sensors for each well, that all active wells have magnets, and that all magnets have the well beneath them active
 # Generate initial guess data and run least squares optimizer on instrument data to get magnet positions
 def getPositions(data):
     numSensors = 3
@@ -125,7 +119,7 @@ def getPositions(data):
     remn_est = []
 
     dummy = np.asarray([1])
-    meas_field(dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+    meas_field(dummy, dummy, dummy, dummy, dummy, dummy, dummy) #call meas_field once to compile it; there needs to be some delay before it's called again for it to compile
 
     arrays = []
     for array in range(0, data.shape[0]):
@@ -133,9 +127,9 @@ def getPositions(data):
             arrays.append(array)
     print(arrays)
 
-    guess = [0, -5, 95, 1, 0, -575] #x, z, theta, y, phi remn
+    guess = [0, -5, 95, 1, 0, -575] #guess for x, z, theta, y, phi, remanence
     x0 = []
-    for i in range(0, 6):
+    for i in range(0, 6): #make a guess for each active well
         for j in arrays:
             if i == 3:
                 x0.append(guess[i] - 19.5 * (j // 6))
@@ -145,8 +139,8 @@ def getPositions(data):
                 x0.append(guess[i])
     print(x0)
 
+    #run least squares on timepoint i
     res = []
-    start = time.time()
     for i in range(0, 500):  # 150
         if len(res) > 0:
             x0 = np.asarray(res.x)
@@ -155,8 +149,8 @@ def getPositions(data):
 
         Bmeas = np.zeros(len(arrays) * 9)
 
-        for j in range(0, len(arrays)): # divide by how many columns active, should be divisible by 4
-            Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, increment * i].reshape((1, numSensors * numAxes))) # Col 5
+        for j in range(0, len(arrays)):
+            Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, increment * i].reshape((1, numSensors * numAxes))) #rearrange sensor readings as a 1d vector
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
                             method='trf', ftol=1e-2)
@@ -172,147 +166,9 @@ def getPositions(data):
 
         print(i)
 
-    end = time.time()
-    print("total processing time for 20s of 24 well data= {0} s".format(end - start))
     return [np.asarray(xpos_est),
            np.asarray(ypos_est),
            np.asarray(zpos_est),
            np.asarray(theta_est),
            np.asarray(phi_est),
            np.asarray(remn_est)]
-
-outputs = []
-outputs2 = []
-
-if  input("Regenerate Fields?"):
-
-    pickle_in = open("Last_Data.pickle", "rb")
-    outputs = pickle.load(pickle_in)
-    pickle_in = open("Last_Data_mean.pickle", "rb")
-    outputs2 = pickle.load(pickle_in)
-
-
-
-
-else:
-
-    mtFields = processData("Durability_Test_11162021_data_90min")[:, :, :, 1500:2000] - np.tile(processData("Durability_Test_11162021_data_Baseline")[:, :, :, 1500:1502], 250)
-
-    mtFields2 = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000]
-    meanOffset = np.mean(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:2000], axis=3)
-
-
-    for i in range (0, len(mtFields2)):
-        mtFields2[:, :, :, i] = mtFields2[:, :, :, i] - meanOffset
-
-    print("Processed")
-    outputs = getPositions(mtFields)
-
-    pickle_out = open("Last_Data.pickle", "wb")
-    pickle.dump(outputs, pickle_out)
-    pickle_out.close()
-
-
-high_cut = 30 # Hz
-b, a = signal.butter(4, high_cut, 'low', fs=100)
-outputs = signal.filtfilt(b, a, outputs, axis=1)
-# outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
-
-# peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
-# print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
-#
-# print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
-#
-# print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
-
-#Plot data
-nameMagnet = []
-for i in range(0, outputs.shape[2]):
-    nameMagnet.append("magnet {0}".format(i))
-
-# x wrt t
-print(outputs.shape)
-# plt.plot(np.arange(0, len(outputs[0, 0:1600, 22]) / 100, .01), outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))
-# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
-# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
-plt.plot(outputs[0, 0:500, :])
-# plt.plot(outputs2[0, 0:500, 3])
-plt.ylabel("predicted x displacement (mm)")
-plt.xlabel("time elapsed (s)")
-plt.grid(True)
-plt.legend(["Element-Wise Subtraction", "Averaged offset subtraction"])
-# plt.legend(nameMagnet)
-plt.show()
-
-# y wrt t
-plt.plot(np.arange(0, len(outputs[0]) / 100, .01), outputs[1])
-plt.ylabel("ypos")
-plt.xlabel("datapoint number")
-# plt.legend(nameMagnet)
-plt.show()
-
-#y wrt x
-plt.plot(outputs[0], outputs[1], 'x')
-plt.xlabel("predicted x position (mm)")
-plt.ylabel("predicted y position (mm)")
-# plt.legend(nameMagnet)
-plt.gca().set_aspect('equal', adjustable='box')
-plt.xlim(150, -10)
-plt.ylim(-70, 10)
-plt.show()
-
-# print outputs
-for i in range(0, len(outputs)):
-     print(outputs[i, 0])
-
-
-# # Modify images to superimpose predicted coords for tracking visualization
-#
-# vidcap = cv2.VideoCapture('Dynamic Capture - Round 2 Video.avi')
-# total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-# print(total)
-# for i in range(0, 23):
-#     vidcap.read()
-# success, input_image = vidcap.read()
-# imsize = input_image.shape[0:2]
-# Magnet_Position_Actual = [[554, 1108], [692, 1110], [703, 1139]]
-#
-# directory = r"C:\Users\NSB\PycharmProjects\pythonProject"
-# os.chdir(directory)
-#
-# # cv2.namedWindow("output", cv2.WINDOW_NORMAL)
-# # cv2.imshow("output", input_image)
-# # cv2.setMouseCallback('output', markPoint, param=Magnet_Position_Actual)
-# # cv2.waitKey(0)
-#
-# Scale = (Magnet_Position_Actual[1][0] - Magnet_Position_Actual[0][0]) / 3.2 # Pixels / mm
-# XOrigin = float(Magnet_Position_Actual[2][0])
-# ZOrigin = float(Magnet_Position_Actual[2][1])
-#
-# height = input_image.shape[0]
-# x = posx[0] * Scale + XOrigin  # convert to pixels
-# z = -posz[0] * Scale + ZOrigin
-# cv2.rectangle(input_image, (int(x) - 10, int(z) - 10), (int(x) + 10, int(z) + 10), (255, 255, 255), -1)
-# cv2.imwrite('frame_no0.jpg', input_image)
-# print(x, z)
-#
-# for point in range(1, 375):
-#     # NOTE First two points in Magnet_Position_Actual define the distance to be used as a scale, select left to right
-#     # -- use the top vertex of the sensor (4 mm)
-#     # Next point is reference point (x, y = 0)
-#     # -- Somewhere towards the middle bottom of the sensor
-#     vidcap.read()
-#     success, input_image = vidcap.read()
-#     if success:
-#         print(point)
-#         x = posx[point] * Scale + XOrigin # convert to pixels
-#         z = -posz[point] * Scale + ZOrigin
-#         cv2.rectangle(input_image, (int(x) - 10, int(z) - 10), (int(x) + 10, int(z) + 10), (255, 255, 255), -1)
-#         cv2.namedWindow("output", cv2.WINDOW_NORMAL)
-#         cv2.imshow("output", input_image)
-#         cv2.waitKey(50)
-#         framename = 'frame_no{0}.jpg'.format(point)
-#         cv2.imwrite(framename, input_image)
-#
-# vidcap.release()
-# cv2.destroyAllWindows()
