@@ -196,7 +196,7 @@ if  input("Regenerate Fields?"):
 
 else:
 
-    mtFields = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000] - np.tile(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:1502], 250)
+    mtFields = processData("Durability_Test_11162021_data_90min")[:, :, :, 1500:2000] - np.tile(processData("Durability_Test_11162021_data_Baseline")[:, :, :, 1500:1502], 250)
 
     mtFields2 = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000]
     meanOffset = np.mean(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:2000], axis=3)
@@ -206,7 +206,7 @@ else:
         mtFields2[:, :, :, i] = mtFields2[:, :, :, i] - meanOffset
 
     print("Processed")
-    outputs = np.asarray(getPositions(mtFields))
+    outputs = getPositions(mtFields)
 
     pickle_out = open("Last_Data.pickle", "wb")
     pickle.dump(outputs, pickle_out)
@@ -216,14 +216,14 @@ else:
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
 outputs = signal.filtfilt(b, a, outputs, axis=1)
-outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
+# outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
-peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
-print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
-
-print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
-
-print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
+# peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
+# print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
+#
+# print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
+#
+# print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 
 #Plot data
 nameMagnet = []
@@ -235,8 +235,8 @@ print(outputs.shape)
 # plt.plot(np.arange(0, len(outputs[0, 0:1600, 22]) / 100, .01), outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
-plt.plot(outputs[0, 0:500, 3])
-plt.plot(outputs2[0, 0:500, 3])
+plt.plot(outputs[0, 0:500, :])
+# plt.plot(outputs2[0, 0:500, 3])
 plt.ylabel("predicted x displacement (mm)")
 plt.xlabel("time elapsed (s)")
 plt.grid(True)
