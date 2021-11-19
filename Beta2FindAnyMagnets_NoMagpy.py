@@ -104,7 +104,9 @@ def processData(dataName):
 
     return fullData
 
+
 # Takes an array indexed as [well, sensor, axis, timepoint]
+# Data should be the difference of the data with plate on the instrument and empty plate calibration data
 # Assumes 3 active sensors for each well, that all active wells have magnets, and that all magnets have the well beneath them active
 # Generate initial guess data and run least squares optimizer on instrument data to get magnet positions
 def getPositions(data):
