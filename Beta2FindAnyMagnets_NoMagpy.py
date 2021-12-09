@@ -124,8 +124,8 @@ def getPositions(data):
     phi_est = []
     remn_est = []
 
-    dummy = np.asarray([1])
-    meas_field(dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+    # dummy = np.asarray([1])
+    # meas_field(dummy, dummy, dummy, dummy, dummy, dummy, dummy)
 
     arrays = []
     for array in range(0, data.shape[0]):
@@ -181,8 +181,6 @@ def getPositions(data):
            np.asarray(phi_est),
            np.asarray(remn_est)]
 
-outputs = []
-outputs2 = []
 
 if  input("Regenerate Fields?"):
 
@@ -190,6 +188,10 @@ if  input("Regenerate Fields?"):
     outputs = pickle.load(pickle_in)
     pickle_in = open("Last_Data_mean.pickle", "rb")
     outputs2 = pickle.load(pickle_in)
+    # toplot = processData("2021-10-28_16-44-21_data_3rd round second run baseline")
+    # for i in range(0, 9):
+    #     plt.plot(toplot[2, i%3, i//3, :])
+    # plt.show()
 
 
 
@@ -215,7 +217,7 @@ else:
 
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
-outputs = signal.filtfilt(b, a, outputs, axis=1)
+# outputs = signal.filtfilt(b, a, outputs, axis=1)
 # outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 # peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
@@ -226,21 +228,24 @@ outputs = signal.filtfilt(b, a, outputs, axis=1)
 # print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 
 #Plot data
-nameMagnet = []
-for i in range(0, outputs.shape[2]):
-    nameMagnet.append("magnet {0}".format(i))
+# nameMagnet = []
+# for i in range(0, outputs.shape[2]):
+#     nameMagnet.append("magnet {0}".format(i))
 
 # x wrt t
-print(outputs.shape)
+# print(outputs.shape)
 # plt.plot(np.arange(0, len(outputs[0, 0:1600, 22]) / 100, .01), outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
-plt.plot(outputs[0, 0:500, :])
-# plt.plot(outputs2[0, 0:500, 3])
+
+print(outputs)
+plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
+# plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 23])
+# plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 1])
+
 plt.ylabel("predicted x displacement (mm)")
 plt.xlabel("time elapsed (s)")
 plt.grid(True)
-plt.legend(["Element-Wise Subtraction", "Averaged offset subtraction"])
 # plt.legend(nameMagnet)
 plt.show()
 
