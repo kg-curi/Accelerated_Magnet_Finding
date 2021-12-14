@@ -146,20 +146,29 @@ def getPositions(data):
     print(x0)
 
     res = []
+
     start = time.time()
-    for i in range(0, 500):  # 150
-        if len(res) > 0:
-            x0 = np.asarray(res.x)
-
-        increment = 1
-
+    for i in range(0, 2000):  # 150
         Bmeas = np.zeros(len(arrays) * 9)
 
         for j in range(0, len(arrays)): # divide by how many columns active, should be divisible by 4
-            Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, increment * i].reshape((1, numSensors * numAxes))) # Col 5
+            Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, i].reshape((1, numSensors * numAxes))) # Col 5
 
-        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
-                            method='trf', ftol=1e-2)
+        if len(res) > 0:
+            x0 = np.asarray(res.x)
+            offsets = []
+            margin = [.05, .05,  .5, .05, .5, 20] #x, z, theta, y, phi, remn
+            for param in range(0, 6):
+                offsets = np.append(offsets, np.tile(margin[param], len(arrays)))
+
+            bndsp = x0 + offsets
+            bndsn = x0 - offsets
+
+            res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
+                                method='trf', ftol=1e-2, bounds=(bndsn, bndsp))
+        else:
+            res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
+                                method='trf', ftol=1e-2)
 
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -186,7 +195,7 @@ if  input("Regenerate Fields?"):
 
     pickle_in = open("Last_Data.pickle", "rb")
     outputs = pickle.load(pickle_in)
-    pickle_in = open("Last_Data_mean.pickle", "rb")
+    pickle_in = open("Last_Data_2.pickle", "rb")
     outputs2 = pickle.load(pickle_in)
     # toplot = processData("2021-10-28_16-44-21_data_3rd round second run baseline")
     # for i in range(0, 9):
@@ -198,14 +207,10 @@ if  input("Regenerate Fields?"):
 
 else:
 
-    mtFields = processData("Durability_Test_11162021_data_90min")[:, :, :, 1500:2000] - np.tile(processData("Durability_Test_11162021_data_Baseline")[:, :, :, 1500:1502], 250)
-
-    mtFields2 = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 1500:2000]
-    meanOffset = np.mean(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 1500:2000], axis=3)
+    # mtFields = processData("Durability_Test_11162021_data_90min")[:, :, :, 1500:2000] - np.tile(processData("Durability_Test_11162021_data_Baseline")[:, :, :, 1500:1502], 250)
+    mtFields = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 0:2500] - processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 0:2500]
 
 
-    for i in range (0, len(mtFields2)):
-        mtFields2[:, :, :, i] = mtFields2[:, :, :, i] - meanOffset
 
     print("Processed")
     outputs = getPositions(mtFields)
@@ -217,8 +222,9 @@ else:
 
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
-# outputs = signal.filtfilt(b, a, outputs, axis=1)
+outputs = signal.filtfilt(b, a, outputs, axis=1)
 # outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
+
 
 # peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
 # print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
@@ -239,7 +245,10 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
 
 print(outputs)
-plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
+# plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
+plt.plot(np.arange(0, 20, .01,), outputs[0, :, :])
+# plt.plot(np.arange(0, 5, .01,), outputs2[0, :, :])
+
 # plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 23])
 # plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 1])
 
