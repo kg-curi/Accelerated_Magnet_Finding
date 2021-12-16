@@ -8,6 +8,12 @@ from numba import njit, jit, prange
 import time
 
 
+# def markPoint(event, x, y, flags, xyarray):
+#     if event == cv2.EVENT_LBUTTONDBLCLK:
+#         xyarray.append([x, y])
+#         print(xyarray)
+
+
 # Simulate fields using a magnetic dipole model
 # @njit(parallel=True) # Use numba to compile this method for large speed increase
 @jit(nopython=True)
@@ -33,16 +39,9 @@ def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
 
         # simulate fields at sensors using dipole model for each magnet
         for field in range(0, len(r)):
-            fields[field] += (3 * r[field] * np.dot(m, r[field]) / rAbs[field] ** 5 - m / rAbs[field] ** 3) / 4 / np.pi
+            fields[field] += 3 * r[field] * np.dot(m, r[field]) / rAbs[field] ** 5 - m / rAbs[field] ** 3
 
-    fields_diff = np.zeros((len(arrays), 2, 3))
-    fields_resh = fields.reshape((len(arrays), 3, 3)) #axis, sensor, well)
-    fields_diff[:, 0, :] = fields_resh[:, 1, :] - fields_resh[:, 0, :]
-    fields_diff[:, 1, :] = fields_resh[:, 2, :] - fields_resh[:, 1, :]
-
-    fields_diff_resh = fields_diff.reshape((1, 2*len(r)))[0]
-
-    return fields_diff_resh
+    return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi
 
 # Cost function
 def objective_function_ls(pos, Bmeas, arrays):
@@ -114,8 +113,8 @@ def processData(dataName):
     return fullData
 
 # Generate initial guess data and run least squares optimizer on instrument data to get magnet positions
-def getPositions(data):
-    numSensors = 2
+def getPositions(data, margin):
+    numSensors = 3
     numAxes = 3
 
     xpos_est = []
@@ -132,7 +131,6 @@ def getPositions(data):
     for array in range(0, data.shape[0]):
         if data[array, 0, 0, 0]:
             arrays.append(array)
-    print(arrays)
 
     guess = [0, -5, 95, 1, 0, -575] #x, z, theta, y, phi remn
     x0 = []
@@ -144,23 +142,31 @@ def getPositions(data):
                 x0.append(guess[i] + 19.5 * (j % 6))
             else:
                 x0.append(guess[i])
-    print(x0)
 
     res = []
+    tp = data.shape[3]
     start = time.time()
-    for i in range(0, 2000):  # 150
-        if len(res) > 0:
-            x0 = np.asarray(res.x)
 
-        increment = 1
-
-        Bmeas = np.zeros(len(arrays) * 6)
+    for i in range(0, tp):  # 150
+        Bmeas = np.zeros(len(arrays) * 9)
 
         for j in range(0, len(arrays)): # divide by how many columns active, should be divisible by 4
-            Bmeas[j*6:(j+1) * 6] = np.asarray(data[arrays[j], :, :, increment * i].reshape((1, numSensors * numAxes))) # Col 5
+            Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, i].reshape((1, numSensors * numAxes))) # Col 5
 
-        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
-                            method='trf', ftol=1e-2)
+        if len(res) > 0:
+            x0 = np.asarray(res.x)
+            offsets = []
+            for param in range(0, 6):
+                offsets = np.append(offsets, np.tile(margin[param], len(arrays)))
+
+            bndsp = x0 + offsets
+            bndsn = x0 - offsets
+
+            res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
+                                method='trf', ftol=1e-2, bounds=(bndsn, bndsp))
+        else:
+            res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
+                                method='trf', ftol=1e-2)
 
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -171,10 +177,11 @@ def getPositions(data):
         phi_est.append(outputs[4])
         remn_est.append(outputs[5])
 
-        print(i)
+        # print(i)
 
     end = time.time()
-    print("total processing time for 20s of 24 well data= {0} s".format(end - start))
+    print(margin)
+    print("total processing time for {1} s of 24 well data= {0} s".format(end - start, tp / 100))
     return [np.asarray(xpos_est),
            np.asarray(ypos_est),
            np.asarray(zpos_est),
@@ -185,8 +192,10 @@ def getPositions(data):
 
 if  input("Regenerate Fields?"):
 
-    pickle_in = open("Last_Data_Diff.pickle", "rb")
+    pickle_in = open("Last_Data.pickle", "rb")
     outputs = pickle.load(pickle_in)
+    pickle_in = open("Last_Data_2.pickle", "rb")
+    outputs2 = pickle.load(pickle_in)
     # toplot = processData("2021-10-28_16-44-21_data_3rd round second run baseline")
     # for i in range(0, 9):
     #     plt.plot(toplot[2, i%3, i//3, :])
@@ -196,21 +205,28 @@ if  input("Regenerate Fields?"):
 
 
 else:
+    mtFields = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 0:10] - processData(
+        "2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 0:10]
 
-    mtFields = np.diff(processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 0:2000], axis=1) - np.diff(processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 0:2000], axis=1)
+    margin = []
+    for i in range(0, 20):
+        margin = [2 - .1*i, 2 - .1*i, 2 - .1*i, 2 - .1*i, 2 - .1*i, 30 - i]  # x, z, theta, y, phi, remn
+        outputs = getPositions(mtFields, margin)
 
+    margin = [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf]
+    outputs = getPositions(mtFields, margin)
     print("Processed")
-    outputs = getPositions(mtFields)
 
-    pickle_out = open("Last_Data_Diff.pickle", "wb")
+    pickle_out = open("Last_Data.pickle", "wb")
     pickle.dump(outputs, pickle_out)
     pickle_out.close()
 
 
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
-# outputs = signal.filtfilt(b, a, outputs, axis=1)
+outputs = signal.filtfilt(b, a, outputs, axis=1)
 # outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
+
 
 # peaks, _ = signal.find_peaks(outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]), height=.15)
 # print((outputs[0, :, 22] - np.amin(outputs[0, :, 22]))[peaks])
@@ -224,8 +240,17 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 # for i in range(0, outputs.shape[2]):
 #     nameMagnet.append("magnet {0}".format(i))
 
+# x wrt t
+# print(outputs.shape)
+# plt.plot(np.arange(0, len(outputs[0, 0:1600, 22]) / 100, .01), outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))
+# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
+# plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
+
 print(outputs)
-plt.plot(np.arange(0, 20, .01,), outputs[0])
+# plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
+plt.plot(np.arange(0, 20, .01,), outputs[0, :, :])
+# plt.plot(np.arange(0, 5, .01,), outputs2[0, :, :])
+
 # plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 23])
 # plt.plot(outputs[0, 0:500, 0], outputs[0, 0:500, 1])
 
@@ -255,3 +280,55 @@ plt.show()
 # print outputs
 for i in range(0, len(outputs)):
      print(outputs[i, 0])
+
+
+# # Modify images to superimpose predicted coords for tracking visualization
+#
+# vidcap = cv2.VideoCapture('Dynamic Capture - Round 2 Video.avi')
+# total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+# print(total)
+# for i in range(0, 23):
+#     vidcap.read()
+# success, input_image = vidcap.read()
+# imsize = input_image.shape[0:2]
+# Magnet_Position_Actual = [[554, 1108], [692, 1110], [703, 1139]]
+#
+# directory = r"C:\Users\NSB\PycharmProjects\pythonProject"
+# os.chdir(directory)
+#
+# # cv2.namedWindow("output", cv2.WINDOW_NORMAL)
+# # cv2.imshow("output", input_image)
+# # cv2.setMouseCallback('output', markPoint, param=Magnet_Position_Actual)
+# # cv2.waitKey(0)
+#
+# Scale = (Magnet_Position_Actual[1][0] - Magnet_Position_Actual[0][0]) / 3.2 # Pixels / mm
+# XOrigin = float(Magnet_Position_Actual[2][0])
+# ZOrigin = float(Magnet_Position_Actual[2][1])
+#
+# height = input_image.shape[0]
+# x = posx[0] * Scale + XOrigin  # convert to pixels
+# z = -posz[0] * Scale + ZOrigin
+# cv2.rectangle(input_image, (int(x) - 10, int(z) - 10), (int(x) + 10, int(z) + 10), (255, 255, 255), -1)
+# cv2.imwrite('frame_no0.jpg', input_image)
+# print(x, z)
+#
+# for point in range(1, 375):
+#     # NOTE First two points in Magnet_Position_Actual define the distance to be used as a scale, select left to right
+#     # -- use the top vertex of the sensor (4 mm)
+#     # Next point is reference point (x, y = 0)
+#     # -- Somewhere towards the middle bottom of the sensor
+#     vidcap.read()
+#     success, input_image = vidcap.read()
+#     if success:
+#         print(point)
+#         x = posx[point] * Scale + XOrigin # convert to pixels
+#         z = -posz[point] * Scale + ZOrigin
+#         cv2.rectangle(input_image, (int(x) - 10, int(z) - 10), (int(x) + 10, int(z) + 10), (255, 255, 255), -1)
+#         cv2.namedWindow("output", cv2.WINDOW_NORMAL)
+#         cv2.imshow("output", input_image)
+#         cv2.waitKey(50)
+#         framename = 'frame_no{0}.jpg'.format(point)
+#         cv2.imwrite(framename, input_image)
+#
+# vidcap.release()
+# cv2.destroyAllWindows()
