@@ -16,15 +16,37 @@ import time
 
 # Simulate fields using a magnetic dipole model
 # @njit(parallel=True) # Use numba to compile this method for large speed increase
-@jit(nopython=True)
-def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
+# @jit(nopython=True)
+# def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays, manta):
+#
+#     fields = np.zeros((len(manta), 3))
+#     theta = theta / 360 * 2 * np.pi
+#     phi = phi / 360 * 2 * np.pi
+#
+#     for magnet in range(0, len(arrays)):
+#         m = np.pi * (.75 / 2.0) ** 2 * remn[magnet] * np.asarray([np.sin(theta[magnet]) * np.cos(phi[magnet]),
+#                                                                   np.sin(theta[magnet]) * np.sin(phi[magnet]),
+#                                                                   np.cos(theta[magnet])])  # moment vectors
+#         r = -np.asarray([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # radii to moment
+#         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
+#
+#         # simulate fields at sensors using dipole model for each magnet
+#         for field in range(0, len(r)):
+#             fields[field] += 3 * r[field] * np.dot(m, r[field]) / rAbs[field] ** 5 - m / rAbs[field] ** 3
+#     print(fields)
+#     return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi
 
-    triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
-
-    manta = triad + arrays[0] // 6 * np.asarray([0, -19.5, 0]) + (arrays[0] % 6) * np.asarray([19.5, 0, 0])
-
-    for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
-        manta = np.append(manta, (triad + arrays[array] // 6 * np.asarray([0, -19.5, 0]) + (arrays[array] % 6) * np.asarray([19.5, 0, 0])), axis=0)
+# Cost function
+# @jit(nopython=True)
+def objective_function_ls(pos, Bmeas, arrays, manta):
+    # x, z, theta y, phi, remn
+    pos = pos.reshape(6, len(arrays))
+    xpos = pos[0]
+    zpos = pos[1]
+    theta = pos[2]
+    ypos = pos[3]
+    phi = pos[4]
+    remn = pos[5]
 
     fields = np.zeros((len(manta), 3))
     theta = theta / 360 * 2 * np.pi
@@ -41,22 +63,10 @@ def meas_field(xpos, zpos, theta, ypos, phi, remn, arrays):
         for field in range(0, len(r)):
             fields[field] += 3 * r[field] * np.dot(m, r[field]) / rAbs[field] ** 5 - m / rAbs[field] ** 3
 
-    return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi
+    # Bcalc = np.asarray(meas_field(x, z, theta, y, phi, remn, arrays, manta))
 
-# Cost function
-def objective_function_ls(pos, Bmeas, arrays):
-    # x, z, theta y, phi, remn
-    pos = pos.reshape(6, len(arrays))
-    x = pos[0]
-    z = pos[1]
-    theta = pos[2]
-    y = pos[3]
-    phi = pos[4]
-    remn = pos[5]
 
-    Bcalc = np.asarray(meas_field(x, z, theta, y, phi, remn, arrays))
-
-    return Bcalc - Bmeas
+    return fields.reshape((1, 3*len(r)))[0] / 4 / np.pi - Bmeas
 
 
 # Process data from instrument
@@ -132,7 +142,7 @@ def getPositions(data):
         if data[array, 0, 0, 0]:
             arrays.append(array)
 
-    guess = [0, -5, 95, 1, 0, -575] #x, z, theta, y, phi remn
+    guess = [0, -5, 90, 1, 0, -575] #x, z, theta, y, phi remn
     x0 = []
     for i in range(0, 6):
         for j in arrays:
@@ -147,17 +157,27 @@ def getPositions(data):
     tp = data.shape[3]
     start = time.time()
 
+    triad = np.asarray([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
+
+    manta = triad + arrays[0] // 6 * np.asarray([0, -19.5, 0]) + (arrays[0] % 6) * np.asarray([19.5, 0, 0])
+
+    for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
+        manta = np.append(manta, (triad + arrays[array] // 6 * np.asarray([0, -19.5, 0]) + (arrays[array] % 6) * np.asarray([19.5, 0, 0])), axis=0)
+
+    Bmeas = np.zeros(len(arrays) * 9)
+
+    print("start")
+
     for i in range(0, tp):  # 150
-        Bmeas = np.zeros(len(arrays) * 9)
 
         for j in range(0, len(arrays)): # divide by how many columns active, should be divisible by 4
             Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, i].reshape((1, numSensors * numAxes))) # Col 5
 
-        if len(res) > 0:
-            x0 = np.asarray(res.x)
+        if i == 1:
+           x0 = np.asarray(res.x)
 
-        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays),
-                            method='lm', ftol=1e-2)
+        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
+                            method='trf', ftol= 1e-4, verbose=2)
 
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -182,28 +202,42 @@ def getPositions(data):
 
 if  input("Regenerate Fields?"):
 
-    pickle_in = open("Last_Data.pickle", "rb")
-    outputs = pickle.load(pickle_in)
-    pickle_in = open("Last_Data2.pickle", "rb")
+    pickle_in = open("Baseline_Avg_Sub.pickle", "rb")
+    outputs1 = pickle.load(pickle_in)
+    pickle_in = open("Baseline_Sub.pickle", "rb")
     outputs2 = pickle.load(pickle_in)
 
 
 
 
 else:
-    mtFields = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, 0:100] - processData(
-        "2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, 0:100]
+    start = 0
+    fin = 200
+    Fields_baseline = processData("2021-10-28_16-44-21_data_3rd round second run baseline")[:, :, :, start:fin]
+    Fields_tissue = processData("2021-10-28_16-45-57_data_3rd round second with plate")[:, :, :, start:fin]
 
-    outputs = getPositions(mtFields)
+    Fields_baseline_avg = np.average(Fields_baseline, axis=3)
 
-    pickle_out = open("Last_Data2.pickle", "wb")
-    pickle.dump(outputs, pickle_out)
+    Fields_s_BA = np.zeros(Fields_tissue.shape)
+    for tp in range(0, len(Fields_s_BA[0, 0, 0, :])):
+        Fields_s_BA[:, :, :, tp] = Fields_tissue[:, :, :, tp] - Fields_baseline_avg
+
+    Fields_s_B = Fields_tissue - Fields_baseline
+
+    outputs1 = getPositions(Fields_s_BA)
+    outputs2 = getPositions(Fields_s_B)
+
+    pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
+    pickle.dump(outputs1, pickle_out)
+    pickle_out.close()
+    pickle_out = open("Baseline_Sub.pickle", "wb")
+    pickle.dump(outputs2, pickle_out)
     pickle_out.close()
 
 
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
-outputs = signal.filtfilt(b, a, outputs, axis=1)
+outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
 outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 
@@ -225,13 +259,25 @@ outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs[0, 0:500, well_no])
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
 
-print(outputs)
+print(outputs1)
 # plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
-plt.plot(np.arange(0, 1, .01,), outputs[2, :, :])
-# plt.plot(np.arange(0, 1, .01,), outputs2[0, :, :])
+plt.plot(np.arange(0, outputs1.shape[1]/100, .01,), outputs1[0, :, :])
+# plt.plot(np.arange(0, outputs2.shape[1]/100, .01,), outputs2[0, :, :])
 
 plt.ylabel("predicted x displacement (mm)")
 plt.xlabel("time elapsed (s)")
+plt.grid(True)
+# plt.legend(nameMagnet)
+plt.show()
+
+
+print(outputs1)
+# plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
+# plt.plot(np.arange(0, outputs.shape[1]/100, .01,), outputs[2, :, :])
+plt.plot(outputs2[0, :, 10], outputs2[2, :, 10])
+
+plt.ylabel("predicted x displacement (mm)")
+plt.xlabel("predicted z displacement (mm)")
 plt.grid(True)
 # plt.legend(nameMagnet)
 plt.show()
