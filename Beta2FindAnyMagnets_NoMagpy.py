@@ -116,26 +116,26 @@ def getPositions(data):
             arrays.append(array)
     arrays = np.asarray(arrays)
 
-    guess = [0, -5, 60 / 360 * 2 * np.pi, 1, 0, -575] #x, z, theta, y, phi remn
+    guess = [0, -5, 90 / 360 * 2 * np.pi, 1, 0, -575] #x, z, theta, y, phi remn
     x0 = []
     for i in range(0, 6):
         for j in arrays:
             if i == 3:
-                x0.append(guess[i] - 19.5 * (j // 6))
+                x0.append(guess[i] - 19.5 * (j % 4))
             elif i == 0:
-                x0.append(guess[i] + 19.5 * (j % 6))
+                x0.append(guess[i] + 19.5 * (j // 4))
             else:
                 x0.append(guess[i])
 
     res = []
     tp = data.shape[3]
 
-    triad = np.array([[-2.15, 1.7, 0], [2.15, 1.7, 0], [0, -2.743, 0]])  # sensor locations
+    triad = np.array([[-2.25, 2.25, 0], [2.25, 2.25, 0], [0, -2.25, 0]])  # sensor locations
 
-    manta = triad + arrays[0] // 6 * np.array([0, -19.5, 0]) + (arrays[0] % 6) * np.array([19.5, 0, 0])
+    manta = triad + (arrays[0] % 4) * np.array([0, -19.5, 0]) + (arrays[0] // 4) * np.array([19.5, 0, 0])
 
     for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
-        manta = np.append(manta, (triad + arrays[array] // 6 * np.array([0, -19.5, 0]) + (arrays[array] % 6) * np.array([19.5, 0, 0])), axis=0)
+        manta = np.append(manta, (triad + (arrays[array] % 4) * np.array([0, -19.5, 0]) + (arrays[array] // 4) * np.array([19.5, 0, 0])), axis=0)
 
     Bmeas = np.zeros(len(arrays) * 9)
 
