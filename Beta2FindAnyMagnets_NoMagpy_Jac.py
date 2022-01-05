@@ -157,6 +157,8 @@ def getPositions(data):
     for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
         manta = np.append(manta, (triad + arrays[array] // 6 * np.array([0, -19.5, 0]) + (arrays[array] % 6) * np.array([19.5, 0, 0])), axis=0)
 
+    print(manta)
+
     Bmeas = np.zeros(len(arrays) * 9)
 
     print("start")
