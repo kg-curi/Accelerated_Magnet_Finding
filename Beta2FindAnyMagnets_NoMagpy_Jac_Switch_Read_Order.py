@@ -11,7 +11,7 @@ import time
 
 
 # Cost function
-@njit(fastmath = True)
+# @njit(fastmath = True)
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -141,9 +141,9 @@ def getPositions(data):
     for i in range(0, 6):
         for j in arrays:
             if i == 3:
-                x0.append(guess[i] - 19.5 * (j % 4))
+                x0.append(guess[i] - 19.5 * (j %4))
             elif i == 0:
-                x0.append(guess[i] + 19.5 * (j // 4))
+                x0.append(guess[i] + 19.5 * (j //4))
             else:
                 x0.append(guess[i])
     print(x0)
@@ -153,10 +153,10 @@ def getPositions(data):
 
     triad = np.array([[-2.25, 2.25, 0], [2.25, 2.25, 0], [0, -2.25, 0]])  # sensor locations
 
-    manta = triad + (arrays[0] % 4) * np.array([0, -19.5, 0]) + (arrays[0] // 4) * np.array([19.5, 0, 0])
+    manta = triad + (arrays[0] %4) * np.array([0, -19.5, 0]) + (arrays[0] //4) * np.array([19.5, 0, 0])
 
     for array in range(1, len(arrays)): #Compute sensor positions -- probably not necessary to do each call
-        manta = np.append(manta, (triad + (arrays[array] % 4) * np.array([0, -19.5, 0]) + (arrays[array] // 4) * np.array([19.5, 0, 0])), axis=0)
+        manta = np.append(manta, (triad + (arrays[array] %4) * np.array([0, -19.5, 0]) + (arrays[array] //4) * np.array([19.5, 0, 0])), axis=0)
 
     print(manta)
 
@@ -173,7 +173,7 @@ def getPositions(data):
            x0 = np.asarray(res.x)
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
-                            method='dogbox', verbose=0)
+                            method='trf', verbose=0)
         # jacobian = res.jac
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -202,12 +202,14 @@ if  input("Regenerate Fields?"):
 
     pickle_in = open("Jesses_DMD_Plate_1.pickle", "rb")
     outputs1 = pickle.load(pickle_in)
+    pickle_in = open("Jesses_DMD_Plate_2.pickle", "rb")
+    outputs2 = pickle.load(pickle_in)
 
 else:
 
 
     start = 0
-    fin = 250
+    fin = 1000
 
     # Fields_baseline = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Baseline")[:, :, :, start:fin], axis=3)
     # Fields_tissue = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin], axis=3)
@@ -229,31 +231,32 @@ else:
     # pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
     # pickle.dump(outputs1, pickle_out)
     # pickle_out.close()
-    pickle_out = open("Jesses_DMD_Plate_1.pickle", "wb")
+    pickle_out = open("Jesses_DMD_Plate_2.pickle", "wb")
     pickle.dump(outputs1, pickle_out)
     pickle_out.close()
 
 outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
+outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 #
 #
-# wb = load_workbook('Jesses_DMD_Plate_B5_1.xlsx')
-# ws = wb.active
-#
-# # A1
-# tcolumn = ws['A']
-# ycolumn = ws['B']
-#
-# t = []
-# x = []
-# for timepoint in range(0, 700):
-#     t.append(tcolumn[timepoint].value)
-#     x.append(ycolumn[timepoint].value)
-#
-# x = np.array(x) / 1000
-# x = x - np.amin(x)
-# t = np.array(t)
-#
+wb = load_workbook('Jesses_DMD_Plate_B5_1.xlsx')
+ws = wb.active
+
+# A1
+tcolumn = ws['A']
+ycolumn = ws['B']
+
+t = []
+x = []
+for timepoint in range(0, 700):
+    t.append(tcolumn[timepoint].value)
+    x.append(ycolumn[timepoint].value)
+
+x = np.array(x) / 1000
+x = x - np.amin(x)
+t = np.array(t)
+
 # xalg = np.sqrt((outputs1[0, 0:1000, 17] - np.amin(outputs1[0, 0:1000, 17]))**2
 #                + (-outputs1[1, 0:1000, 17] + outputs1[1, np.argmin(outputs1[0, 0:1000, 17]), 17])**2)
 #
@@ -272,25 +275,25 @@ outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
 # plt.ylabel("Algorithm Magnet Position Change (mm)")
 # plt.xlabel("Time Elapsed (s)")
 # plt.show()
-#
+
 # twitch_amp = xalg[peaks_alg] - xalg[troughs_alg[1:len(troughs_alg)]]
 # print(np.mean(twitch_amp))
-#
-#
-#
-# troughs_opt, _ = signal.find_peaks(-x, height= -.10, distance=10)
-# peaks_opt, _ = signal.find_peaks(x, height= .10, distance=10)
-#
-# plt.plot(t, x)
-# plt.plot(t[peaks_opt], x[peaks_opt], "x")
-# plt.plot(t[troughs_opt], x[troughs_opt], "x")
-# plt.ylabel("Optical Magnet Position Change (mm)")
-# plt.xlabel("Time Elapsed (s)")
-#
-# twitch_amp = x[peaks_opt] - x[troughs_opt]
-# print(np.mean(twitch_amp))
-#
-# plt.show()
+
+
+
+troughs_opt, _ = signal.find_peaks(-x, height= -.10, distance=10)
+peaks_opt, _ = signal.find_peaks(x, height= .10, distance=10)
+
+plt.plot(t, x)
+plt.plot(t[peaks_opt], x[peaks_opt], "x")
+plt.plot(t[troughs_opt], x[troughs_opt], "x")
+plt.ylabel("Optical Magnet Position Change (mm)")
+plt.xlabel("Time Elapsed (s)")
+
+twitch_amp = x[peaks_opt] - x[troughs_opt]
+print(np.mean(twitch_amp))
+
+plt.show()
 
 # print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 #
@@ -309,7 +312,8 @@ for i in range(0, outputs1.shape[2]):
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
 
 # plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
-plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs1[0, :, :])
+plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs1[0, :, 2])
+plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs2[0, :, 2])
 # plt.plot(np.arange(0, outputs2.shape[1]/100, .01,), outputs2[0, :, :])
 
 plt.ylabel("predicted z position (mm)")
