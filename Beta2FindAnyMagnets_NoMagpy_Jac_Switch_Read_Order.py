@@ -11,7 +11,7 @@ import time
 
 
 # Cost function
-# @njit(fastmath = True)
+@njit(fastmath = True)
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -136,7 +136,7 @@ def getPositions(data):
             arrays.append(array)
     arrays = np.asarray(arrays)
 
-    guess = [2, -5, 90 / 360 * 2 * np.pi, -1, 0, -575] #x, z, theta, y, phi remn
+    guess = [0, -5, 90 / 360 * 2 * np.pi, 0, 0, -575] #x, z, theta, y, phi remn
     x0 = []
     for i in range(0, 6):
         for j in arrays:
@@ -200,10 +200,10 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 
 if  input("Regenerate Fields?"):
 
-    pickle_in = open("Jesses_DMD_Plate_1.pickle", "rb")
+    pickle_in = open("Beta22_Test_112022.pickle", "rb")
     outputs1 = pickle.load(pickle_in)
-    pickle_in = open("Jesses_DMD_Plate_2.pickle", "rb")
-    outputs2 = pickle.load(pickle_in)
+    # pickle_in = open("Jesses_DMD_Plate_2.pickle", "rb")
+    # outputs2 = pickle.load(pickle_in)
 
 else:
 
@@ -215,8 +215,8 @@ else:
     # Fields_tissue = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin], axis=3)
 
 
-    Fields_baseline = processData("Jesses_DMD_Plate_1_Baseline")[:, :, :, start:fin]
-    Fields_tissue = processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin]
+    Fields_baseline = processData("2022-01-17_20-51-28_data_Baseline")[:, :, :, start:fin]
+    Fields_tissue = processData("2022-01-17_20-54-12_data_C5_Imaged")[:, :, :, start:fin]
 
     Fields_baseline_avg = np.average(Fields_baseline, axis=3)
 
@@ -224,38 +224,38 @@ else:
     for tp in range(0, len(Fields_s_BA[0, 0, 0, :])):
         Fields_s_BA[:, :, :, tp] = Fields_tissue[:, :, :, tp] - Fields_baseline_avg
 
-    # Fields_s_B = Fields_tissue - Fields_baseline
+    Fields_s_B = Fields_tissue - Fields_baseline
 
-    outputs1 = getPositions(Fields_s_BA)
+    outputs1 = getPositions(Fields_s_B)
 
     # pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
     # pickle.dump(outputs1, pickle_out)
     # pickle_out.close()
-    pickle_out = open("Jesses_DMD_Plate_2.pickle", "wb")
+    pickle_out = open("Beta22_Test_112022.pickle", "wb")
     pickle.dump(outputs1, pickle_out)
     pickle_out.close()
 
 outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
-outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
+# outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 #
 #
-wb = load_workbook('Jesses_DMD_Plate_B5_1.xlsx')
-ws = wb.active
-
-# A1
-tcolumn = ws['A']
-ycolumn = ws['B']
-
-t = []
-x = []
-for timepoint in range(0, 700):
-    t.append(tcolumn[timepoint].value)
-    x.append(ycolumn[timepoint].value)
-
-x = np.array(x) / 1000
-x = x - np.amin(x)
-t = np.array(t)
+# wb = load_workbook('Jesses_DMD_Plate_B5_1.xlsx')
+# ws = wb.active
+#
+# # A1
+# tcolumn = ws['A']
+# ycolumn = ws['B']
+#
+# t = []
+# x = []
+# for timepoint in range(0, 700):
+#     t.append(tcolumn[timepoint].value)
+#     x.append(ycolumn[timepoint].value)
+#
+# x = np.array(x) / 1000
+# x = x - np.amin(x)
+# t = np.array(t)
 
 # xalg = np.sqrt((outputs1[0, 0:1000, 17] - np.amin(outputs1[0, 0:1000, 17]))**2
 #                + (-outputs1[1, 0:1000, 17] + outputs1[1, np.argmin(outputs1[0, 0:1000, 17]), 17])**2)
@@ -280,30 +280,37 @@ t = np.array(t)
 # print(np.mean(twitch_amp))
 
 
-
-troughs_opt, _ = signal.find_peaks(-x, height= -.10, distance=10)
-peaks_opt, _ = signal.find_peaks(x, height= .10, distance=10)
-
-plt.plot(t, x)
-plt.plot(t[peaks_opt], x[peaks_opt], "x")
-plt.plot(t[troughs_opt], x[troughs_opt], "x")
-plt.ylabel("Optical Magnet Position Change (mm)")
-plt.xlabel("Time Elapsed (s)")
-
-twitch_amp = x[peaks_opt] - x[troughs_opt]
-print(np.mean(twitch_amp))
-
-plt.show()
+#
+# troughs_opt, _ = signal.find_peaks(-x, height= -.10, distance=10)
+# peaks_opt, _ = signal.find_peaks(x, height= .10, distance=10)
+#
+# plt.plot(t, x)
+# plt.plot(t[peaks_opt], x[peaks_opt], "x")
+# plt.plot(t[troughs_opt], x[troughs_opt], "x")
+# plt.ylabel("Optical Magnet Position Change (mm)")
+# plt.xlabel("Time Elapsed (s)")
+#
+# twitch_amp = x[peaks_opt] - x[troughs_opt]
+# print(np.mean(twitch_amp))
+#
+# plt.show()
 
 # print(np.mean((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 #
 # print(np.std((outputs[0, 0:1600, 22] - np.amin(outputs[0, 0:1600, 22]))[peaks]))
 
+
+# print outputs
+for i in range(0, len(outputs1)):
+     print(outputs1[i, 0])
+
 #Plot data
 wells = ["A", "B", "C", "D"]
+symbols = ["x", ".", "-", "v", ",", "s"]
 nameMagnet = []
 for i in range(0, outputs1.shape[2]):
     nameMagnet.append("{0}{1}".format(wells[i % 4], i // 4 + 1))
+    plt.plot(np.arange(0, outputs1.shape[1] / 100, .01), outputs1[0, :, i]) #, symbols[i//4])
 
 # x wrt t
 # print(outputs.shape)
@@ -312,11 +319,10 @@ for i in range(0, outputs1.shape[2]):
 # plt.plot(np.arange(0, len(outputs[0, 0:500, well_no]) / 100, .01), outputs2[0, 0:500, well_no])
 
 # plt.plot(np.arange(0, 5, .01,), outputs[0] [0:500, :])
-plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs1[0, :, 2])
-plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs2[0, :, 2])
+# plt.plot(np.arange(0, outputs1.shape[1]/100, .01), outputs2[0, :, 2])
 # plt.plot(np.arange(0, outputs2.shape[1]/100, .01,), outputs2[0, :, :])
 
-plt.ylabel("predicted z position (mm)")
+plt.ylabel("predicted x position (mm)")
 plt.xlabel("time elapsed (s)")
 plt.grid(True)
 plt.legend(nameMagnet)
@@ -351,6 +357,3 @@ plt.xlim(150, -10)
 plt.ylim(-70, 10)
 plt.show()
 
-# print outputs
-for i in range(0, len(outputs)):
-     print(outputs[i, 0])
