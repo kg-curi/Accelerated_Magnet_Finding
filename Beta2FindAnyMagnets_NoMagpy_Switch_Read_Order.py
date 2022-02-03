@@ -2,16 +2,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
+from scipy.optimize import _numdiff
 import pickle
 import scipy.signal as signal
 from numba import njit, jit, prange
 from openpyxl import load_workbook
 import time
 
-
-
 # Cost function
-@njit(fastmath = True)
+# @njit(fastmath = True)
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -173,8 +172,8 @@ def getPositions(data):
            x0 = np.asarray(res.x)
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
-                            method='trf', verbose=0)
-        # jacobian = res.jac
+                            method='trf', verbose=2)
+        jacobian = res.jac
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
         xpos_est.append(outputs[0])
@@ -195,12 +194,12 @@ def getPositions(data):
                      phi_est,
                      remn_est])
 
-high_cut = 30  # Hz
+high_cut = 20  # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
 
 if  input("Regenerate Fields?"):
 
-    pickle_in = open("Beta22_Test_112022.pickle", "rb")
+    pickle_in = open("Variable_Stiffness_Plate_After_30_Min.pickle", "rb")
     outputs1 = pickle.load(pickle_in)
     # pickle_in = open("Jesses_DMD_Plate_2.pickle", "rb")
     # outputs2 = pickle.load(pickle_in)
@@ -209,14 +208,14 @@ else:
 
 
     start = 0
-    fin = 1000
+    fin = 100
 
     # Fields_baseline = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Baseline")[:, :, :, start:fin], axis=3)
     # Fields_tissue = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin], axis=3)
 
 
-    Fields_baseline = processData("2022-01-17_20-51-28_data_Baseline")[:, :, :, start:fin]
-    Fields_tissue = processData("2022-01-17_20-54-12_data_C5_Imaged")[:, :, :, start:fin]
+    Fields_baseline = processData("B1_Variable_Stiffness_Plate_Baseline")[:, :, :, start:fin]
+    Fields_tissue = processData("B1_Variable_Stiffness_Plate")[:, :, :, start:fin]
 
     Fields_baseline_avg = np.average(Fields_baseline, axis=3)
 
@@ -231,11 +230,11 @@ else:
     # pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
     # pickle.dump(outputs1, pickle_out)
     # pickle_out.close()
-    pickle_out = open("Beta22_Test_112022.pickle", "wb")
+    pickle_out = open(".pickle", "wb")
     pickle.dump(outputs1, pickle_out)
     pickle_out.close()
 
-outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
+# outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
 # outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 #

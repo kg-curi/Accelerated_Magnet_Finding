@@ -62,12 +62,12 @@ def processData(dataName):
 # data =processData("2021-10-15_18-54-01_data_baseline")[3, :, :, 0:2500]
 
 well_select = 23
-data = processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, 0:1000] #- processData("2021-10-15_18-54-01_data_baseline")[3, :, :, 0:2500]
-pickle_in = open("Jesses_DMD_Plate_1.pickle", "rb")
+data = processData("2022-01-17_20-54-12_data_C5_Imaged")[:, :, :, 1000:2000] #- processData("2021-10-15_18-54-01_data_baseline")[3, :, :, 0:2500]
+pickle_in = open("Beta22_Test_112022.pickle", "rb")
 algo = pickle.load(pickle_in)[0, 0:1000, :]
 high_cut = 30 # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
-data = signal.filtfilt(b, a, data[:, 1, 0, :], axis=1)
+data = signal.filtfilt(b, a, data[:, 0, 0, :], axis=1)
 # algo = signal.filtfilt(b, a, algo, axis=1)
 data = np.transpose(data - np.amin(data, axis=1)[:, np.newaxis])
 algo = algo - np.amin(algo, axis=0)[np.newaxis, :]
@@ -83,14 +83,15 @@ for i in range(0, 24):
     RegIntercept = LinearFit_Model.intercept
     Rsq = (LinearFit_Model.rvalue) ** 2
 
-    # print(RegSlope)
-    # print(Rsq)
-    # #
+    print(RegSlope)
+    print(Rsq)
+
     # plt.plot(data[:, i], algo[:, i])
     # plt.plot(data[:, i], RegSlope * data[:, i] + RegIntercept)
     # # plt.plot(data[:, i], algo[:, i] - (RegSlope * data[:, i] + RegIntercept))
     # plt.ylabel("Algorithm x displacement output (mm)")
     # plt.xlabel("Flux density from sensor 2, x coordinate (mT)")
+    # plt.title(i)
     # plt.grid(True)
     # plt.show()
 
