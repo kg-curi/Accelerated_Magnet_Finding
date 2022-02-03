@@ -5,19 +5,58 @@ from scipy.optimize import least_squares
 from scipy.optimize import _numdiff
 import pickle
 import scipy.signal as signal
-from scipy.optimize import _numdiff
 from numba import njit, jit, prange
-from openpyxl import load_workbook
+# from openpyxl import load_workbook
 import time
 
+MAGVOL = np.pi * (.75 / 2.0) ** 2
 
-def hello():
-    print("Hello")
+@njit(fastmath = True)
+def _compute_absolute_step(x0, eps):
+    """
+    Computes an absolute step from a relative step for finite difference
+    calculation.
+
+    Parameters
+    ----------
+    rel_step: None or array-like
+        Relative step for the finite difference calculation
+    x0 : np.ndarray
+        Parameter vector
+    f0 : np.ndarray or scalar
+    method : {'2-point', '3-point', 'cs'}
+
+    Returns
+    -------
+    h : float
+        The absolute step size
+
+    Notes
+    -----
+    `h` will always be np.float64. However, if `x0` or `f0` are
+    smaller floating point dtypes (e.g. np.float32), then the absolute
+    step size will be calculated from the smallest floating point size.
+    """
+    rel_step = eps
+    sign_x0 = np.zeros(len(x0))
+    for x in range(0, len(x0)):
+        if x0[x] >= 0:
+            sign_x0[x] = 1
+        else:
+            sign_x0[x] = -1
+    return rel_step * sign_x0 * np.maximum(1.0, np.abs(x0))
+
+@njit(fastmath = True)
+def compute_moment(thet, ph, rem):
+    st = np.sin(thet)
+    sph = np.sin(ph)
+    ct = np.cos(thet)
+    cph = np.cos(ph)
+    return MAGVOL * rem * np.array([[st * cph], [st * sph], [ct]])  # moment vectors
 
 
-
-def compute_jacobian(pos, Bmeas, arrays, manta):
-    MAGVOL = np.pi * (.75 / 2.0) ** 2
+@njit(fastmath = True)
+def compute_jacobian(pos, Bmeas, arrays, manta, eps):
 
     taco = np.zeros((216, 144))
     # compute all all magnets once, store in 3D array, each sub-array is fields for a given magnet
@@ -30,46 +69,35 @@ def compute_jacobian(pos, Bmeas, arrays, manta):
     ypos = pos2[3]
     phi = pos2[4]
     remn = pos2[5]
-    individual_magnet_fields = np.zeros((len(manta), 3, len(arrays)))
-    perturbed_individual_magnet_fields = np.zeros((len(manta), 3, len(arrays) * 6))
 
     # simulate fields at sensors using dipole model for each magnet
-    h = _numdiff._compute_absolute_step(None, pos, individual_magnet_fields, "2-point")
+    h = _compute_absolute_step(pos, eps)
     # compute for one magnet
     for magnet in range(0, len(arrays)):
         r = -np.array([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # radii to moment
         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
-        st = np.sin(theta[magnet])
-        sph = np.sin(phi[magnet])
-        ct = np.cos(theta[magnet])
-        cph = np.cos(phi[magnet])
-        m = MAGVOL * remn[magnet] * np.array([[st * cph], [st * sph], [ct]])  # moment vectors
+        m = compute_moment(theta[magnet], phi[magnet], remn[magnet])
 
-        individual_magnet_fields[:, :, magnet] = np.transpose((np.transpose(3 * r * np.dot(r, m)) / rAbs ** 5 - m / rAbs ** 3) / 4 / np.pi)
-
-        # f0 = np.transpose((np.transpose(3 * r * np.dot(r, m)) / rAbs ** 5 - m / rAbs ** 3) / 4 / np.pi)
+        f0 = (np.transpose(3 * r * np.dot(r, m)) / rAbs ** 5 - m / rAbs ** 3)
 
         for param in range(0, 6):
-            rpert = np.ones(r.shape) * r
-            rAbspert = np.ones(rAbs.shape) * rAbs
-            mpert = np.ones(m.shape) * m
+            rpert = r.copy()
+            rAbspert = rAbs.copy()
+            mpert = m.copy()
             pert = h[magnet + len(arrays) * param]
             perturbation_xyz = np.zeros((1, 3))
             perturbation_theta = theta[magnet]
             perturbation_phi = phi[magnet]
             perturbation_remn = remn[magnet]
 
-            if param == 0:
-                perturbation_xyz[0, 0] = pert # recompute r
-                rpert = -np.array([xpos[magnet], ypos[magnet], zpos[magnet]]) + perturbation_xyz + manta
-                rAbspert = np.sqrt(np.sum(rpert ** 2, axis=1))
-            elif param == 1:
-                perturbation_xyz[0, 2] = pert # recompute r
-                rpert = -np.array([xpos[magnet], ypos[magnet], zpos[magnet]]) + perturbation_xyz + manta
-                rAbspert = np.sqrt(np.sum(rpert ** 2, axis=1))
-            elif param == 3:
-                perturbation_xyz[0, 1] = pert  # recompute r
-                rpert = -np.array([xpos[magnet], ypos[magnet], zpos[magnet]]) + perturbation_xyz + manta
+            if param == 0 or param == 1 or param == 3:
+                if param == 0:
+                    perturbation_xyz[0, 0] = pert # recompute r
+                elif param == 1:
+                    perturbation_xyz[0, 2] = pert # recompute r
+                elif param == 3:
+                    perturbation_xyz[0, 1] = pert  # recompute r
+                rpert = r - perturbation_xyz
                 rAbspert = np.sqrt(np.sum(rpert ** 2, axis=1))
             else:
                 if param == 2:
@@ -79,44 +107,18 @@ def compute_jacobian(pos, Bmeas, arrays, manta):
                 else:
                     perturbation_remn += pert
 
-                st = np.sin(perturbation_theta)
-                sph = np.sin(perturbation_phi)
-                ct = np.cos(perturbation_theta)
-                cph = np.cos(perturbation_phi)
-                mpert =  MAGVOL * perturbation_remn * np.array([[st * cph], [st * sph], [ct]])  # moment vectors
+                mpert = compute_moment(perturbation_theta, perturbation_phi, perturbation_remn)
 
-            # f1 = np.transpose((np.transpose(3 * rpert * np.dot(rpert, mpert)) / rAbspert ** 5 - mpert / rAbspert ** 3) / 4 / np.pi)
-            # taco[:, magnet + len(arrays) * param] = -((f1 - f0) / h[magnet + param*len(arrays)]).reshape((1, 3*len(r)))[0]
-
-            # replace simulated fields for one magnet
-            perturbed_individual_magnet_fields[:, :, magnet + param * len(arrays)] =\
-                np.transpose((np.transpose(3 * rpert * np.dot(rpert, mpert)) / rAbspert ** 5 - mpert / rAbspert ** 3) / 4 / np.pi)
-
-    f0 = np.sum(individual_magnet_fields, axis=2)
-    for param in range(0, 6):
-        for magnet in range(0, len(arrays)):
-            toSum = np.ones(individual_magnet_fields.shape) * individual_magnet_fields
-            toSum[:, :, magnet] = perturbed_individual_magnet_fields[:, :, magnet + param * len(arrays)]
-            f1 = np.sum(toSum, axis=2)
-            df = (f1 - f0).reshape((1, 3*len(r)))[0]
-            taco[:, magnet + len(arrays) * param] = -df/h[magnet + param*len(arrays)]
-
-    # taco[:, magnet + len(arrays) * param] = (f1 - f0).reshape((1, 3*len(r)))[0]
-
-
-#   # Subtract sum of orignal 3D array from each column in Jaco
-    # dfdx = taco / np.transpose(h)
-    tacoT = np.transpose(taco)
-
+            f1 = (np.transpose(3 * rpert * np.dot(rpert, mpert)) / rAbspert ** 5 - mpert / rAbspert ** 3)
+            taco[:, magnet + len(arrays) * param] = (np.transpose(f1 - f0) / 4 / np.pi / h[magnet + param*len(arrays)]).copy().reshape((1, 3*len(r)))[0]
     return taco
 
 
 
 
 # Cost function
-# @njit(fastmath = True)
-def objective_function_ls(pos, Bmeas, arrays, manta):
-    MAGVOL = np.pi * (.75 / 2.0) ** 2
+@njit(fastmath = True)
+def objective_function_ls(pos, Bmeas, arrays, manta, eps):
 
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -130,11 +132,7 @@ def objective_function_ls(pos, Bmeas, arrays, manta):
     fields = np.zeros((len(manta), 3))
 
     for magnet in range(0, len(arrays)):
-        st = np.sin(theta[magnet])
-        sph = np.sin(phi[magnet])
-        ct = np.cos(theta[magnet])
-        cph = np.cos(phi[magnet])
-        m = MAGVOL * remn[magnet] * np.array([[st * cph], [st * sph], [ct]])  # moment vectors
+        m = compute_moment(theta[magnet], phi[magnet], remn[magnet])
 
         r = -np.asarray([xpos[magnet], ypos[magnet], zpos[magnet]]) + manta  # radii to moment
         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
@@ -230,7 +228,6 @@ def getPositions(data):
     x0 = np.array(x0)
     res = []
     tp = data.shape[3]
-    start = time.time()
 
     triad = np.array([[-2.25, 2.25, 0], [2.25, 2.25, 0], [0, -2.25, 0]])  # sensor locations
 
@@ -241,18 +238,38 @@ def getPositions(data):
 
     Bmeas = np.zeros(len(arrays) * 9)
 
+    eps = np.finfo(np.float64).eps**0.5
+
     print("start")
 
-    for i in range(0, tp):  # 150
+
+    for j in range(0, len(arrays)):  # divide by how many columns active, should be divisible by 4
+        Bmeas[j * 9:(j + 1) * 9] = np.asarray(data[arrays[j], :, :, i].reshape((1, numSensors * numAxes)))  # Col 5
+
+    res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta, eps),
+                        method='lm', verbose=0, jac=compute_jacobian, ftol=1e-1)
+
+    outputs = np.asarray(res.x).reshape(6, len(arrays))
+    xpos_est.append(outputs[0])
+    ypos_est.append(outputs[3])
+    zpos_est.append(outputs[1])
+    theta_est.append(outputs[2])
+    phi_est.append(outputs[4])
+    remn_est.append(outputs[5])
+
+
+    start = time.time()
+    for i in range(1, tp):  # 150
 
         for j in range(0, len(arrays)): # divide by how many columns active, should be divisible by 4
             Bmeas[j*9:(j+1) * 9] = np.asarray(data[arrays[j], :, :, i].reshape((1, numSensors * numAxes))) # Col 5
 
+
         if i >= 1:
            x0 = np.array(res.x)
 
-        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
-                            method='trf', verbose=2, jac=compute_jacobian)
+        res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta, eps),
+                            method='lm', verbose=0, jac=compute_jacobian, ftol=1e-1)
         jacobian = res.jac
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -288,7 +305,7 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 
 
 start = 0
-fin = 100
+fin = 1000
 
 # Fields_baseline = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Baseline")[:, :, :, start:fin], axis=3)
 # Fields_tissue = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin], axis=3)
@@ -310,7 +327,7 @@ outputs1 = getPositions(Fields_s_B)
 # pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
 # pickle.dump(outputs1, pickle_out)
 # pickle_out.close()
-pickle_out = open(".pickle", "wb")
+pickle_out = open("Acc.pickle", "wb")
 pickle.dump(outputs1, pickle_out)
 pickle_out.close()
 
@@ -381,7 +398,7 @@ outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
 
 # print outputs
 for i in range(0, len(outputs1)):
-     print(outputs1[i, 1:3])
+     print(outputs1[i, 0])
 
 #Plot data
 wells = ["A", "B", "C", "D"]

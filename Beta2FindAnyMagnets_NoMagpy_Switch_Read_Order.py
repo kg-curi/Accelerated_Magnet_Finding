@@ -6,11 +6,11 @@ from scipy.optimize import _numdiff
 import pickle
 import scipy.signal as signal
 from numba import njit, jit, prange
-from openpyxl import load_workbook
+# from openpyxl import load_workbook
 import time
 
 # Cost function
-# @njit(fastmath = True)
+@njit()
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -55,9 +55,8 @@ def objective_function_ls(pos, Bmeas, arrays, manta):
         rAbs = np.sqrt(np.sum(r ** 2, axis=1))
 
         # simulate fields at sensors using dipole model for each magnet
-        fields_from_magnet = (np.transpose(3 * r * np.dot(r, m)) / rAbs ** 5 - m / rAbs ** 3) / 4 / np.pi
+        fields += np.transpose((np.transpose(3 * r * np.dot(r, m)) / rAbs ** 5 - m / rAbs ** 3) / 4 / np.pi)
 
-        fields += np.transpose(fields_from_magnet)
 
     # return fields.reshape((1, 3*r.shape[0]))[0] - Bmeas
 
@@ -172,7 +171,7 @@ def getPositions(data):
            x0 = np.asarray(res.x)
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
-                            method='trf', verbose=2)
+                            method='trf', verbose=0)
         jacobian = res.jac
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
@@ -199,7 +198,7 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 
 if  input("Regenerate Fields?"):
 
-    pickle_in = open("Variable_Stiffness_Plate_After_30_Min.pickle", "rb")
+    pickle_in = open("Original.pickle", "rb")
     outputs1 = pickle.load(pickle_in)
     # pickle_in = open("Jesses_DMD_Plate_2.pickle", "rb")
     # outputs2 = pickle.load(pickle_in)
@@ -208,7 +207,7 @@ else:
 
 
     start = 0
-    fin = 100
+    fin = 1000
 
     # Fields_baseline = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Baseline")[:, :, :, start:fin], axis=3)
     # Fields_tissue = signal.filtfilt(b, a, processData("Jesses_DMD_Plate_1_Tissue")[:, :, :, start:fin], axis=3)
@@ -230,11 +229,11 @@ else:
     # pickle_out = open("Baseline_Avg_Sub_id.pickle", "wb")
     # pickle.dump(outputs1, pickle_out)
     # pickle_out.close()
-    pickle_out = open(".pickle", "wb")
+    pickle_out = open("Original.pickle", "wb")
     pickle.dump(outputs1, pickle_out)
     pickle_out.close()
 
-# outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
+outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
 # outputs2 = signal.filtfilt(b, a, outputs2, axis=1)
 
 #
