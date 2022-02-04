@@ -10,7 +10,7 @@ from numba import njit, jit, prange
 import time
 
 # Cost function
-@njit()
+@njit(fastmath = True)
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -171,7 +171,7 @@ def getPositions(data):
            x0 = np.asarray(res.x)
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
-                            method='trf', verbose=0)
+                            method='lm', verbose=0, ftol=1e-1)
         jacobian = res.jac
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))

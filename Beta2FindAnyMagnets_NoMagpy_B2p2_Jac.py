@@ -58,7 +58,7 @@ def compute_moment(thet, ph, rem):
 @njit(fastmath = True)
 def compute_jacobian(pos, Bmeas, arrays, manta, eps):
 
-    taco = np.zeros((216, 144))
+    J = np.zeros((216, 144))
     # compute all all magnets once, store in 3D array, each sub-array is fields for a given magnet
 
     # x, z, theta y, phi, remn
@@ -110,8 +110,8 @@ def compute_jacobian(pos, Bmeas, arrays, manta, eps):
                 mpert = compute_moment(perturbation_theta, perturbation_phi, perturbation_remn)
 
             f1 = (np.transpose(3 * rpert * np.dot(rpert, mpert)) / rAbspert ** 5 - mpert / rAbspert ** 3)
-            taco[:, magnet + len(arrays) * param] = (np.transpose(f1 - f0) / 4 / np.pi / h[magnet + param*len(arrays)]).copy().reshape((1, 3*len(r)))[0]
-    return taco
+            J[:, magnet + len(arrays) * param] = (np.transpose(f1 - f0) / 4 / np.pi / h[magnet + param*len(arrays)]).copy().reshape((1, 3*len(r)))[0]
+    return J
 
 
 
