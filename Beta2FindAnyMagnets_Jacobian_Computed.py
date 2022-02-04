@@ -19,7 +19,14 @@ def compute_moment(thet,
     cph = np.cos(ph)
     return MAGVOL * rem * np.array([[st * cph], [st * sph], [ct]])  # moment vectors
 
-
+# The jacobian is a matrix of partial derivatives of the cost function w.r.t. each parameter at each axis of each sensor
+# used by a least squares algorithm to compute the derivative of the rms of the cost function for minimization.
+# Built-in scipy least_squares computation of the jacobian is inefficient in the context of multi-magnet finding problems,
+# scaling with M*(N)**2 where N is the number of magnets, for an M parameter fit.
+# Computing it separately from least_squares with the following method lets it scale by M*(N)**1.
+# This approach speeds up pure python alg ~30x, numba accelerated ~10x for 24 well plate with data from the beta 2.2
+# The least_squares "method" should be set to "lm" and "ftol" to 1e-1 for specified performance
+# The first 20 or so data points should be ignored, since there's a small transient
 @njit(fastmath = True)
 def compute_jacobian(pos,
                      Bmeas,
@@ -220,12 +227,12 @@ def getPositions(data):
 
     Bmeas = np.zeros(len(arrays) * 9)
 
-    eps = np.finfo(np.float64).eps**0.5
+    eps = np.finfo(np.float64).eps**0.5 # machine epsilon for float64, calibrated for 2-point derivative calculation
 
     for j in range(0, len(arrays)):  # divide by how many columns active, should be divisible by 4
         Bmeas[j * 9:(j + 1) * 9] = np.asarray(data[arrays[j], :, :, 0].reshape((1, numSensors * numAxes)))  # Col 5
 
-    dummy1 = objective_function_ls(x0, Bmeas, arrays, manta, eps)
+    dummy1 = objective_function_ls(x0, Bmeas, arrays, manta, eps) #compile accelerated methods
     dummy2 = compute_jacobian(x0, Bmeas, arrays, manta, eps)
 
     print("start")
@@ -237,7 +244,7 @@ def getPositions(data):
 
         if i >= 1:
             if i == 1:
-                start = time.time()
+                start = time.time() # time code after first datapoint
             x0 = np.array(res.x)
 
         res = least_squares(objective_function_ls,
@@ -265,6 +272,8 @@ def getPositions(data):
                      phi_est,
                      remn_est])
 
+
+### Feed Data To Algorithm and Handle Outputs ###
 
 high_cut = 20  # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
