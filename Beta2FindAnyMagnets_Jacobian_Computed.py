@@ -26,7 +26,7 @@ def compute_moment(thet,
 # Computing it separately from least_squares with the following method lets it scale by M*(N)**1.
 # This approach speeds up pure python alg ~30x, numba accelerated ~10x for 24 well plate with data from the beta 2.2
 # The least_squares "method" should be set to "lm" and "ftol" to 1e-1 for specified performance
-# The first 20 or so data points should be ignored, since there's a small transient
+# The first 10 or so data points should be ignored, since there's a small transient
 @njit(fastmath = True)
 def compute_jacobian(pos,
                      Bmeas,
