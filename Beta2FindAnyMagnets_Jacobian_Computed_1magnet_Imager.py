@@ -276,7 +276,7 @@ def getPositions(data):
 high_cut = 30  # Hz
 b, a = signal.butter(4, high_cut, 'low', fs=100)
 mag_sel = 18
-dur = 450000
+dur = 600000
 
 fileid = "deflect2"
 

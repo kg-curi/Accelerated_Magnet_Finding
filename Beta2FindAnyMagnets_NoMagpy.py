@@ -2,6 +2,8 @@
 import numpy as np
 from scipy.optimize import least_squares
 from numba import njit
+import scipy.signal as signal
+import matplotlib.pyplot as plt
 
 # Simulate fields using a magnetic dipole model
 # Use numba to compile this method for large speed increase
@@ -9,7 +11,7 @@ from numba import njit
 # takes list showing which sensor arrays are active
 # gets
 # Cost function
-@njit(parallel = True)
+@njit()
 def objective_function_ls(pos, Bmeas, arrays, manta):
     # x, z, theta y, phi, remn
     pos = pos.reshape(6, len(arrays))
@@ -151,7 +153,7 @@ def getPositions(data):
 
         res = least_squares(objective_function_ls, x0, args=(Bmeas, arrays, manta),
                             method='trf', ftol= 1e-2, verbose=0)
-
+        print(i)
 
         outputs = np.asarray(res.x).reshape(6, len(arrays))
         xpos_est.append(outputs[0])
@@ -169,3 +171,74 @@ def getPositions(data):
             np.asarray(remn_est)]
 
 
+high_cut = 5  # Hz
+b, a = signal.butter(4, high_cut, 'low', fs=100)
+
+start = 0
+fin = 5000
+
+Fields_baseline = processData("Lattice_at_4.5_mm_baseline")[:, :, :, :]
+Fields_tissue = processData("Lattice_at_4.5_mm_start")[:, :, :, :]
+
+Fields_baseline_avg = np.average(Fields_baseline, axis=3)
+
+Fields_s_BA = np.zeros(Fields_tissue.shape)
+for tp in range(0, len(Fields_s_BA[0, 0, 0, :])):
+    Fields_s_BA[:, :, :, tp] = Fields_tissue[:, :, :, tp] - Fields_baseline_avg
+
+
+outputs1 = getPositions(Fields_s_BA)
+np.save("outputs3.npy", outputs1)
+
+
+# outputs1 = np.load("outputs2.npy")[:, :, :]
+outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
+print(outputs1.shape)
+# plt.plot(np.diff(outputs1[0, :, :], axis=0))
+plt.plot(outputs1[2, :, :])
+
+plt.show()
+
+fig, ax = plt.subplots()
+#Plot data
+wells = ["A", "B", "C", "D"]
+nameMagnet = []
+t = np.arange(0, outputs1.shape[1] / 100, .01)
+
+text_style = dict(horizontalalignment='right', verticalalignment='center',
+                  fontsize=12, fontfamily='monospace')
+marker_style = dict(linestyle='none', color='0.8', markersize=10,
+                    markerfacecolor="tab:blue", markeredgecolor="tab:blue")
+
+
+for i in range(0, 24):
+    nameMagnet.append("{0}{1}".format(wells[i % 4], i // 4 + 1))
+    peaks, _ = signal.find_peaks(-np.diff(outputs1[0, :, i]), height=.002, distance=100)
+    # plt.plot(t, outputs1[0, :, i])
+    # plt.plot(t[peaks + 100], outputs1[0, peaks + 100, i], "x")
+    # plt.plot(t[0:len(t)-1], -np.diff(outputs1[0, :, i]))
+    # plt.plot(t[peaks], -np.diff(outputs1[0, :, i])[peaks], "x")
+    marker = "${0}{1}$".format(wells[i % 4], i // 4 + 1)
+    print(len(peaks))
+
+    # marker_style.update(markeredgecolor="none", markersize=10)
+    ax.plot(np.diff(outputs1[2, peaks + 100, i]), marker=marker, **marker_style)
+# plt.show()
+
+
+# plt.plot(np.ones(len(peaks)) * -.1)
+# plt.plot(np.ones(len(peaks)) * -.09)
+# plt.plot(np.ones(len(peaks)) * -.11)
+
+plt.plot(np.ones(len(peaks)) * 0)
+
+    # plt.plot(t[0:len(t) - 1], np.diff(outputs1[0, :, i])) #, symbols[i//4])
+    # plt.plot(peaks*.01, np.diff(outputs1[0, :, i])[peaks], 'x')
+
+plt.ylabel("predicted z position change (mm/movement)")
+# plt.xlabel("time elapsed (s)")
+plt.xlabel("movement no.")
+
+plt.grid(True)
+# plt.legend(nameMagnet)
+plt.show()
