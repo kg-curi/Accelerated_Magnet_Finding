@@ -20,15 +20,15 @@ def sample_data(magnet_data, optical_data, numsamples, scale):
         x.append(xcol[timepoint].value)
         z.append(zcol[timepoint].value)
 
-    peaks_optical, _ = signal.find_peaks(np.diff(x), height=[2, 6], distance=10)
-    opt_samples = peaks_optical + 15
-    opt_samples_values = np.array(x)[peaks_optical + 15]/scale
+    peaks_optical, _ = signal.find_peaks(np.diff(x), height=[2, 15], distance=10)
+    opt_samples = peaks_optical + 7
+    opt_samples_values = np.array(x)[peaks_optical + 10]/scale
 
     # plt.plot(np.diff(x))
     # plt.plot(peaks_optical, np.diff(np.array(x))[peaks_optical], 'x')
     # plt.show()
     #
-    # plt.plot(np.array(x)/105.0)
+    # plt.plot(np.array(x)/scale)
     # plt.plot(opt_samples, opt_samples_values, 'x')
     # plt.show()
 
@@ -62,15 +62,12 @@ def sample_data(magnet_data, optical_data, numsamples, scale):
             'mag_samples_values' : mag_samples_values[0:numsamples],
             'raw_data' : np.load("f" + magnet_data)}
 
+
 samples = []
-samples.append(sample_data("deflect1.npy", "2022-06-07_Deflect1_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("deflect2.npy", "2022-06-07_Deflect2_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("1dash.npy", "2022-06-10_1dash_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("2dash.npy", "2022-06-10_2dash_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("4dash.npy", "2022-06-10_3dash_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("4dash.npy", "2022-06-10_4dash_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("5dash.npy", "2022-06-10_5dash_X000-reslts_user.xlsx", 12, 114))
-samples.append(sample_data("6dash.npy", "2022-06-10_6dash_X000-reslts_user.xlsx", 12, 114))
+for i in [1, 3, 4, 6]:
+    fileid = "Dash{0}".format(i)
+    samples.append(sample_data("{0}.npy".format(fileid), r"C:\Users\Nanosurface\Pictures\Camera Roll\06182022\results_2022-06-20_17-37-54\xlsx\2022-06-20_{0}_X000-reslts_user.xlsx".format(fileid), 12, 116))
+
 
 
 for dataset in samples:

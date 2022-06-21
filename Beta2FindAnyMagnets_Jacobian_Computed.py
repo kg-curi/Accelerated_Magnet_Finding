@@ -278,12 +278,12 @@ b, a = signal.butter(4, high_cut, 'low', fs=100)
 mag_sel = 18
 dur = 450000
 
-fileid = "deflect2"
+fileid = "Dash4"
 
 if input("Compute Positions"):
-    Fields_baseline_full = processData("C:\\Users\\NSB\\PycharmProjects\\pythonProject\\mantarray-firmware-testcode\\Mantarray_Utility_Tool\\data\\deflect12_baseline", False)[:, :, :, :]
+    Fields_baseline_full = processData("C:\\Users\\Nanosurface\\Documents\\06182022\\{0}_Cal".format(fileid), False)[:, :, :, :]
     print("Processed 1")
-    Fields_tissue_full = processData("C:\\Users\\NSB\\PycharmProjects\\pythonProject\\mantarray-firmware-testcode\\Mantarray_Utility_Tool\\data\\{0}".format(fileid), True)[:, :, :, :]
+    Fields_tissue_full = processData("C:\\Users\\Nanosurface\\Documents\\06182022\\{0}_Def".format(fileid), True)[:, :, :, :]
     print("Processed 2")
     # Fields_baseline = np.zeros(Fields_baseline_full.shape)
     # Fields_tissue = np.zeros(Fields_tissue_full.shape)
@@ -314,7 +314,7 @@ if input("Compute Positions"):
     # #
 
 else:
-    outputs1 = np.load("outputs14.npy".format(fileid))[:, 0:dur]
+    outputs1 = np.load("{0}.npy".format(fileid))[:, 0:dur]
 
     # outputs1 = np.load("{0}.npy".format(fileid))[:, 0:dur]
 outputs1 = signal.filtfilt(b, a, outputs1, axis=1)
