@@ -5,6 +5,7 @@ from scipy.optimize import least_squares
 import scipy.signal as signal
 from numba import njit
 import time
+import os as os
 
 MAGVOL = np.pi * (.75 / 2.0) ** 2 # for cylindrical magnet with diameter .75 mm and height 1 mm
 
@@ -281,37 +282,34 @@ dur = 450000
 fileid = "Dash4"
 
 if input("Compute Positions"):
-    Fields_baseline_full = processData("C:\\Users\\Nanosurface\\Documents\\06182022\\{0}_Cal".format(fileid), False)[:, :, :, :]
+    Fields_baseline_full = processData("2022-06-22_11-51-34_data", False)[:, :, :, :]  # baseline data
     print("Processed 1")
-    Fields_tissue_full = processData("C:\\Users\\Nanosurface\\Documents\\06182022\\{0}_Def".format(fileid), True)[:, :, :, :]
-    print("Processed 2")
-    # Fields_baseline = np.zeros(Fields_baseline_full.shape)
-    # Fields_tissue = np.zeros(Fields_tissue_full.shape)
-    # Fields_baseline[mag_sel, :, :, :] = Fields_baseline_full[mag_sel, :, :, :]
-    # Fields_tissue[mag_sel, :, :, :] = Fields_tissue_full[mag_sel, :, :, :]
+    magnet_data_folder = os.getcwd() + "\\scheduled_recordings_6_22_22"  # Magnet Data
+    for file in os.listdir(magnet_data_folder):
+        Fields_tissue_full = processData(os.path.splitext(magnet_data_folder + "\\" + file)[0], True)[:, :, :, :]
+        print("Processed 2")
+        Fields_baseline_avg = np.average(Fields_baseline_full, axis=3)
+        print(Fields_baseline_full.shape)
+        Fields_s_BA = np.zeros(Fields_tissue_full.shape)
+        for tp in range(0, len(Fields_s_BA[0, 0, 0, :])):
+            Fields_s_BA[:, :, :, tp] = -(
+                        Fields_tissue_full[:, :, :, tp] - Fields_baseline_avg[:, :, :])  # Fields_baseline_avg
 
+        # for i in range(16, 17):
+        #     for j in range (0, 3):
+        #         plt.plot(Fields_baseline_full[i, 0, j, :])
+        #         plt.plot(Fields_baseline_full[i, 1, j, :])
+        #         plt.plot(Fields_baseline_full[i, 2, j, :])
+        #
+        # plt.show()
 
+        print("processed Full")
+        np.save(os.getcwd() + "\\" + os.path.splitext(file)[0] + "Raw", Fields_s_BA)
 
-    Fields_baseline_avg = np.average(Fields_baseline_full, axis=3)
-    print(Fields_baseline_full.shape)
-    Fields_s_BA = np.zeros(Fields_tissue_full.shape)
-    for tp in range(0, len(Fields_s_BA[0, 0, 0, :])):
-        Fields_s_BA[:, :, :, tp] = -(Fields_tissue_full[:, :, :, tp] - Fields_baseline_avg[:, :, :]) #Fields_baseline_avg
-
-    for i in range(16, 17):
-        for j in range (0, 3):
-            plt.plot(Fields_baseline_full[i, 0, j, :])
-            plt.plot(Fields_baseline_full[i, 1, j, :])
-            plt.plot(Fields_baseline_full[i, 2, j, :])
-    print(i)
-    plt.show()
-
-    print("processed Full")
-    np.save("f{0}.npy".format(fileid), Fields_tissue_full)
-
-    outputs1 = getPositions(Fields_s_BA[:, :, :, 0:dur])
-    np.save("{0}.npy".format(fileid), outputs1)
-    # #
+        outputs1 = getPositions(Fields_s_BA[:, :, :, 0:dur])
+        # plt.plot(outputs1[0, :, :])
+        # plt.show()
+        np.save(os.getcwd() + "\\" + os.path.splitext(file)[0], outputs1)
 
 else:
     outputs1 = np.load("{0}.npy".format(fileid))[:, 0:dur]
